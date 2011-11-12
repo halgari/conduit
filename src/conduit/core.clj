@@ -8,6 +8,27 @@
 
 (defn null-fn [state k v]
     state)
+
+(defprotocol ISignal
+    (attach [this cfn to]))
+
+(defprotocol ISlot
+    (accept [this k v]))
+
+(extend clojure.lang.Agent
+    ISignal
+    {:attach (fn [from f to]
+                (send from
+                          #(assoc-in %1 [:listeners %2] %3)
+                           to
+                           f)
+                    (await from))}
+    ISlot
+    {:accept (fn [this k v]
+                 (send this
+                     (fn [state k v] 
+                         ((:f state) state k v))
+                     k v))})
  
 (defn make-node [f & opts]
     "Creates a new node with f as the processing function. f should be a function
@@ -38,22 +59,15 @@
      be any type) or nil, if the given signal should not be passed on."
         (let [f (cond (keyword? cfn)
                          #(if (= % cfn) cfn nil)
-                      (fn? cfn) fn
+                      (fn? cfn) cfn
                       (map? cfn) #(get cfn %)
                       :else (throw (java.lang.Exception. "converter function must
                               be a function, map or keyword")))]
-            (send from
-                  #(assoc-in %1 [:listeners %2] %3)
-                   to
-                   f)
-            (await from)))
+            (attach from f to)))
 
 (defn emit 
     ([node k v]
-        (send node
-             (fn [state k v] 
-                 ((:f state) state k v))
-             k v))
+        (accept node k v))
     ([node filter-fn k v]
         (emit node (filter-fn k) v)))
 
@@ -87,8 +101,9 @@
     (make-node (fn [state k v]
                    (match [k v]
                        [:default _] (if (f v)
-                                    (do (emit-all state k v))
-                                        state)
+                                        (do (emit-all state k v)
+                                            state)
+                                         state)
                        [:default ::stop] (NState. nil null-fn nil)
                        [_ _] state))))
 
@@ -114,12 +129,12 @@
     (make-node (fn [state k v]
                    (match [k v (:state state)]
                        [:default _ (a :when #(>= % cnt))]
-                            (emit-all state :default v))
+                            (emit-all state :default v)
                        [:default _ (a :when #(> % cnt))]
                             (map-state state inc)
                        [:default ::stop _]
                             (do (emit-all state :default ::stop)
-                                (NState. :stopped null-fn nil)))))
+                                (NState. :stopped null-fn nil))))))
                             
                        
                        
