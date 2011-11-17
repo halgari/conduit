@@ -15,6 +15,7 @@
 (defprotocol ISlot
     (accept [this k v]))
 
+
 (extend clojure.lang.Agent
     ISignal
     {:attach (fn [from f to]
