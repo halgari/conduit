@@ -6,7 +6,8 @@
 
 (def setters 
     {:title #(.setTitle %1 %2)
-     :show #(.setVisible %1 %2)})                               
+     :show #(.setVisible %1 %2)
+     :size (fn [o [w h]] (.setSize o w h))})                               
      
 (def slots
     setters)
@@ -17,16 +18,25 @@
     {:setprop (fn [this prop value]
                  (uic/invoke-later #((get setters prop) this value)))})
 
-(defn frame [& opts]
-    (let [opts (apply hash-map opts)
-          a (atom {:state nil :listeners nil})]
-          (proxy [javax.swing.JFrame conduit.ui.ui_core.IPropSettable]
+(defmacro proxy-ui [el props sets]
+    `(let [a# (atom {:state nil :listeners nil})
+           p# ~props
+           o# (proxy [~el conduit.ui.ui_core.IPropSettable]
               []
-              (setprop [prop value]
-                  (uic/invoke-later #((get setters prop) this value)))
-              (attach [cfn to]
-                  (swap! a assoc-in [:listeners to] cfn))
-              (accept [k v]
-                  (uic/set-prop! this k v)))))
+              (setprop [~'prop ~'value]
+                  (uic/invoke-later #((get p# ~'prop) ~'this ~'value)))
+              (attach [~'cfn ~'to]
+                  (swap! a# assoc-in [:listeners ~'to] ~'cfn))
+              (accept [~'k ~'v]
+                  (uic/set-prop! ~'this ~'k ~'v)))]
+          (doseq [s# ~sets]
+                 (uic/set-prop! o# (first s#) (second s#)))
+          o#))
+
+(defn frame [& opts]
+    (let [options (apply hash-map opts)]
+         (proxy-ui javax.swing.JFrame
+                   setters
+                   (:sets options))))
                                                       
 
